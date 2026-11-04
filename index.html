@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Nexus Messenger (Crypto Update)</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; -webkit-tap-highlight-color: transparent; }
+        body { background: #000; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; color: #fff; }
+        .app-container { width: 100%; max-width: 400px; height: 100vh; max-height: 850px; background: #0e1621; position: relative; overflow: hidden; display: flex; flex-direction: column; }
+        .screen { position: absolute; inset: 0; display: none; flex-direction: column; background: #0e1621; z-index: 10; overflow-y: auto;}
+        .screen.active { display: flex; }
+
+        .toast { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); background: rgba(229,62,62,.95); color: #fff; padding: 12px 24px; border-radius: 8px; font-size: 14px; z-index: 99999; opacity: 0; pointer-events: none; transition: .3s; text-align: center; width: 90%; max-width: 300px; font-weight: bold; }
+        .toast.show { opacity: 1; top: 40px; }
+        .toast.success { background: rgba(56,161,105,.95); }
+
+        /* КРУТАЯ АНИМАЦИЯ */
+        @keyframes cartoon-pulse {
+            0% { transform: scale(1) rotate(0deg); filter: drop-shadow(0 0 5px gold); }
+            50% { transform: scale(1.15) rotate(5deg); filter: drop-shadow(0 0 15px gold); }
+            100% { transform: scale(1) rotate(0deg); filter: drop-shadow(0 0 5px gold); }
+        }
+        .cartoon-anim { display: inline-block; animation: cartoon-pulse 1.5s infinite ease-in-out; }
+
+        .auth-body { display: flex; flex-direction: column; height: 100%; padding-bottom: 90px; }
+        .auth-content { padding: 20px; }
+        .auth-header { text-align: center; margin: 10px 0 20px; }
+        .auth-logo { font-size: 50px; margin-bottom: 10px; }
+        .auth-title { font-size: 22px; font-weight: bold; }
+        .input-group { margin-bottom: 15px; }
+        .input-group input, .search-input, .modal-content input, .admin-card input, .admin-card select, .chat-input-area input { width: 100%; padding: 15px; border: 1px solid #2b5278; background: #17212b; color: #fff; border-radius: 10px; font-size: 16px; outline: none; margin-bottom: 10px; }
+        .admin-secret-group { display: none; margin-bottom: 15px; background: #2b1d1d; border: 1px solid #e53e3e; border-radius: 10px; padding: 10px; }
+        .admin-secret-group.active { display: block; }
+        .admin-secret-group textarea { width: 100%; height: 60px; background: #1a1212; color: #ffb3b3; border: none; border-radius: 5px; padding: 10px; outline: none; }
+        .error-msg { color: #e53e3e; font-size: 13px; margin-bottom: 10px; display: none; text-align: center; font-weight: bold; }
+        .auth-footer { position: absolute; bottom: 0; left: 0; width: 100%; padding: 20px; background: #0e1621; border-top: 1px solid #17212b; display: flex; flex-direction: column; gap: 10px; }
+        .auth-btn { width: 100%; padding: 18px; background: #2b5278; color: #fff; border: none; border-radius: 10px; font-size: 16px; font-weight: bold; cursor: pointer; }
+        .auth-btn.secondary { background: #242f3d; }
+
+        .main-header { display: flex; justify-content: space-between; align-items: center; padding: 10px 15px; background: #17212b; border-bottom: 1px solid #242f3d; }
+        .menu-btn, .back-btn, .close-btn { font-size: 24px; color: #7d8b99; cursor: pointer; padding: 5px; background: none; border: none; z-index: 100; position: relative;}
+        .header-title { font-size: 18px; font-weight: bold; }
+        .header-actions { display: flex; gap: 15px; font-size: 20px; color: #7d8b99; }
+        .wallet-bar { background: #17212b; padding: 10px 15px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #242f3d; font-size: 14px; color: #4fa8ff; font-weight: bold; cursor: pointer; }
+        
+        .chat-list { flex: 1; overflow-y: auto; }
+        .chat-item { display: flex; align-items: center; padding: 12px 15px; border-bottom: 1px solid #17212b; cursor: pointer; }
+        .avatar { width: 50px; height: 50px; border-radius: 50%; display: flex; justify-content: center; align-items: center; font-size: 20px; font-weight: bold; margin-right: 15px; flex-shrink: 0; color: #fff; overflow: hidden;}
+        .avatar img { width: 100%; height: 100%; object-fit: cover; }
+        .chat-info { flex: 1; overflow: hidden; }
+        .chat-name { font-size: 16px; font-weight: 500; display: flex; align-items: center; gap: 5px; }
+        .verified-badge { color: #4fa8ff; font-size: 14px; display: none; }
+        .verified-badge.show { display: inline-block; }
+        .chat-msg { font-size: 14px; color: #7d8b99; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 3px; }
+
+        .chat-header { display: flex; align-items: center; padding: 10px 15px; background: #17212b; gap: 15px; border-bottom: 1px solid #242f3d; }
+        .chat-messages { flex: 1; padding: 15px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+        .message { background: #182533; padding: 10px 15px; border-radius: 10px; max-width: 80%; font-size: 14px; width: fit-content; word-break: break-word; }
+        .message.out { background: #2b5278; align-self: flex-end; }
+        .chat-input-area { padding: 10px 15px; background: #17212b; display: flex; gap: 10px; }
+        .chat-input-area input { flex: 1; padding: 12px; border-radius: 20px; margin-bottom: 0;}
+        .chat-input-area button { background: #2b5278; border: none; color: #fff; padding: 0 20px; border-radius: 20px; cursor: pointer; }
+
+        /* ИСПРАВЛЕНИЕ МЕНЮ */
+        .menu-overlay { position: absolute; inset: 0; background: rgba(0,0,0,.7); z-index: 900; opacity: 0; pointer-events: none; transition: .3s; }
+        .menu-overlay.active { opacity: 1; pointer-events: auto; }
+        .side-menu { position: absolute; top: 0; left: -280px; width: 280px; height: 100%; background: #17212b; z-index: 1000; transition: .3s; display: flex; flex-direction: column; overflow-y: auto;}
+        .side-menu.active { left: 0; }
+        .profile-section { padding: 20px; border-bottom: 1px solid #242f3d; background: #1c2733; cursor: pointer;}
+        .profile-avatar-big { width: 80px; height: 80px; border-radius: 50%; background: #e53e3e; display: flex; justify-content: center; align-items: center; font-size: 32px; font-weight: bold; margin-bottom: 10px; overflow: hidden; border: 2px solid #4fa8ff;}
+        .profile-avatar-big img { width: 100%; height: 100%; object-fit: cover; }
+        .menu-items { padding: 10px 0; }
+        .menu-item { padding: 15px 20px; font-size: 15px; cursor: pointer; display: flex; align-items: center; gap: 15px; }
+        .menu-item:hover { background: #242f3d; }
+
+        .admin-content { padding: 20px; display: flex; flex-direction: column; gap: 15px; }
+        .admin-card { background: #1c2733; padding: 15px; border-radius: 10px; border: 1px solid #242f3d; }
+        .admin-card h3 { font-size: 16px; margin-bottom: 10px; color: #4fa8ff; }
+        .admin-card input, .admin-card select { margin-bottom: 10px; padding: 10px; }
+        .admin-card button { width: 100%; padding: 10px; background: #2b5278; color: #fff; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; margin-bottom: 5px; }
+        .btn-danger { background: #e53e3e !important; }
+        .btn-warning { background: #ed8936 !important; }
+        .btn-success { background: #38a169 !important; }
+
+        .wallet-balance { font-size: 28px; font-weight: bold; color: #ecc94b; text-align: center; margin: 20px 0; }
+        .shop-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .shop-item { background: #1c2733; padding: 20px 10px; border-radius: 12px; text-align: center; cursor: pointer; border: 1px solid #242f3d; }
+        .shop-item .icon { font-size: 40px; margin-bottom: 10px; display: inline-block;}
+        .shop-item .price { font-size: 14px; color: #ecc94b; font-weight: bold; }
+        .empty { color: #7d8b99; font-size: 13px; text-align: center; grid-column: span 2; }
+        .number-card { background: #1c2733; padding: 15px; border-radius: 12px; border: 1px solid #242f3d; display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .number-text { font-size: 16px; font-weight: bold; font-family: monospace; }
+        .eye-btn { background: #2b5278; border: none; color: #fff; padding: 8px 12px; border-radius: 8px; cursor: pointer; font-size:12px;}
+        .my-gifts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; padding: 15px; }
+        .gift-card { background: #1c2733; padding: 20px; border-radius: 12px; text-align: center; border: 1px solid #38a169; position: relative; }
+        .gift-card .icon { font-size: 40px; display: inline-block;}
+        .sell-btn { position: absolute; top: 5px; right: 5px; background: #e53e3e; color: #fff; border: none; border-radius: 50%; width: 25px; height: 25px; font-size: 12px; cursor: pointer; }
+
+        .modal { position: absolute; inset: 0; background: rgba(0,0,0,.8); z-index: 2000; display: none; justify-content: center; align-items: flex-start; padding-top: 60px; }
+        .modal.active { display: flex; }
+        .modal-content { background: #17212b; width: 90%; border-radius: 15px; padding: 20px; display: flex; flex-direction: column; gap: 15px; max-height: 80vh; overflow-y: auto;}
+        .modal-header { display: flex; justify-content: space-between; align-items: center; font-weight: bold; font-size: 18px; }
+        .modal-close { background: none; border: none; color: #7d8b99; font-size: 20px; cursor: pointer; }
+        .search-result { background: #1c2733; padding: 15px; border-radius: 10px; display: flex; justify-content: space-between; align-items: center; margin-top: 10px; }
+        .action-btn { background: #2b5278; color: #fff; border: none; padding: 8px 15px; border-radius: 8px; cursor: pointer; font-weight: bold; }
+        
+        /* Профиль Стили */
+        .profile-bg { height: 120px; background: #2b5278; position: relative; background-size: cover; background-position: center; }
+        .profile-info { display: flex; flex-direction: column; align-items: center; margin-top: -40px; padding: 0 20px;}
+        .profile-avatar-main { width: 90px; height: 90px; border-radius: 50%; background: #e53e3e; display: flex; justify-content: center; align-items: center; font-size: 36px; font-weight: bold; border: 4px solid #0e1621; overflow: hidden;}
+        .profile-avatar-main img { width: 100%; height: 100%; object-fit: cover;}
+        .profile-name-text { font-size: 20px; font-weight: bold; margin-top: 10px; display: flex; align-items: center; gap: 5px;}
+        .profile-bio { color: #7d8b99; font-size: 14px; margin-top: 5px; text-align: center;}
+        .profile-stats { display: flex; gap: 10px; margin-top: 15px; font-size: 14px; flex-wrap: wrap; justify-content: center;}
+        .stat-box { background: #1c2733; padding: 5px 10px; border-radius: 8px; border: 1px solid #242f3d;}
+        .stat-box span { color: #4fa8ff; font-weight: bold;}
+        .profile-tabs { display: flex; margin-top: 20px; border-bottom: 1px solid #242f3d;}
+        .profile-tab { flex: 1; text-align: center; padding: 10px; cursor: pointer; font-weight: bold; color: #7d8b99;}
+        .profile-tab.active { color: #4fa8ff; border-bottom: 2px solid #4fa8ff;}
+        .profile-content { padding: 20px; }
+        
+        .nft-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+        .nft-item { background: #1c2733; padding: 10px; border-radius: 10px; text-align: center; border: 1px solid #242f3d; cursor: pointer; }
+        .nft-item img { width: 100%; border-radius: 8px; }
+    </style>
+</head>
+<body>
+
+<div class="app-container" id="app">
+    <div class="toast" id="toast"></div>
+
+    <div class="screen active" id="authScreen">
+        <div class="auth-body">
+            <div class="auth-content">
+                <div class="auth-header">
+                    <div class="auth-logo">🛡️</div>
+                    <div class="auth-title">Вход в систему</div>
+                </div>
+                <div class="input-group">
+                    <input type="text" id="usernameInput" placeholder="Ваш ник" autocomplete="username">
+                    <input type="password" id="passwordInput" placeholder="Пароль" autocomplete="current-password">
+                </div>
+                <div class="admin-secret-group" id="adminSecretBox">
+                    <textarea id="secretPhrase" placeholder="Секретная фраза админа..."></textarea>
+                </div>
+                <div class="error-msg" id="mainError"></div>
+            </div>
+            <div class="auth-footer">
+                <button type="button" class="auth-btn" id="loginBtn">Войти</button>
+                <button type="button" class="auth-btn secondary" id="openRegBtn">Регистрация</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="screen" id="mainScreen">
+        <div class="main-header">
+            <div class="menu-btn" id="menuBtn">☰</div>
+            <div class="header-title">Чаты</div>
+            <div class="header-actions">
+                <span id="openSearchBtn">🔍</span>
+                <span id="openCreateBtn">✏️</span>
+            </div>
+        </div>
+        <div class="wallet-bar" id="walletBarBtn">
+            <span>💳 Магазин</span>
+            <span id="headerBalance">0 💰</span>
+        </div>
+        <div class="chat-list" id="mainChatList"></div>
+    </div>
+
+    <div class="screen" id="profileScreen">
+        <div class="main-header">
+            <div class="menu-btn" id="closeProfileBtn">←</div>
+            <div class="header-title">Профиль</div>
+            <div style="width:24px;"></div>
+        </div>
+        <div class="profile-bg" id="profileBg"></div>
+        <div class="profile-info">
+            <div class="profile-avatar-main" id="profileAvatar">U</div>
+            <div class="profile-name-text" id="profileName">User <span class="verified-badge" id="profileVerifyBadge">✔</span></div>
+            <div class="profile-bio" id="profileBio">@user • Разработчик</div>
+            
+            <div class="profile-stats">
+                <div class="stat-box">Coin: <span id="profileBalance">0</span></div>
+                <div class="stat-box">USDT: <span id="profileUsdt">0</span></div>
+                <div class="stat-box" style="color:#ecc94b;">NEX: <span id="profileNex">0</span></div>
+            </div>
+        </div>
+        
+        <div class="profile-tabs">
+            <div class="profile-tab active" onclick="switchProfileTab('gifts', event)">Подарки</div>
+            <div class="profile-tab" onclick="switchProfileTab('nft', event)">NFT Аватар</div>
+            <div class="profile-tab" onclick="switchProfileTab('numbers', event)">Номера</div>
+        </div>
+        
+        <div class="profile-content" id="profileContent"></div>
+    </div>
+
+    <div class="screen" id="chatScreen">
+        <div class="chat-header">
+            <div class="back-btn" id="chatBackBtn">←</div>
+            <div class="avatar" id="chatAvatar" style="width:40px;height:40px;margin:0;"></div>
+            <div>
+                <div style="font-weight:bold;" id="chatName">Имя</div>
+                <div style="font-size:12px;color:#7d8b99;" id="chatStatus">онлайн</div>
+            </div>
+        </div>
+        <div class="chat-messages" id="chatMessages"></div>
+        <div class="chat-input-area">
+            <input type="text" placeholder="Сообщение..." id="msgInput">
+            <button id="sendBtn">➤</button>
+        </div>
+    </div>
+
+    <div class="screen" id="walletScreen">
+        <div class="main-header"><div class="menu-btn" data-back="mainScreen">←</div><div class="header-title">Магазин</div><div style="width:24px;"></div></div>
+        <div class="admin-content">
+            <div style="text-align:center;">
+                <div style="color:#7d8b99;">Ваш крипто-кошелек (NEX)</div>
+                <div class="wallet-balance" id="walletBalance" style="color:#ecc94b; font-size:36px;">0 NEX</div>
+            </div>
+            <h3>Аукцион номеров 📱</h3><div class="shop-grid" id="numbersAuctionGrid"></div>
+            <h3 style="margin-top:20px;">Анимированные Подарки 🎁</h3><div class="shop-grid" id="giftShopGrid"></div>
+            <h3 style="margin-top:20px;">Купить NFT Аватар 🖼️</h3><div class="shop-grid" id="nftShopGrid"></div>
+        </div>
+    </div>
+
+    <div class="screen" id="myGiftsScreen">
+        <div class="main-header"><div class="menu-btn" data-back="mainScreen">←</div><div class="header-title">Мои подарки</div><div style="width:24px;"></div></div>
+        <div class="my-gifts-grid" id="myGiftsGrid"></div>
+    </div>
+
+    <div class="screen" id="adminScreen">
+        <div class="main-header"><div class="menu-btn" data-back="mainScreen">←</div><div class="header-title">Админ-панель</div><div style="width:24px;"></div></div>
+        <div class="admin-content">
+            <div class="admin-card"><h3>🪙 Выдать NEX (Крипта)</h3><input type="text" id="adminNexUser" placeholder="Ник"><input type="number" id="adminNexAmount" placeholder="Сумма NEX"><button class="btn-success" id="adminNexBtn">Выдать NEX</button></div>
+            <div class="admin-card"><h3>📱 Создать номер</h3><input type="text" id="adminNewNumber" placeholder="+375 29 000-00-00"><input type="number" id="adminNewNumberPrice" placeholder="Цена (в 💰)"><button class="btn-success" id="adminAddNumberBtn">Добавить</button></div>
+            <div class="admin-card"><h3>💰 Выдать Coin</h3><input type="text" id="adminGiveUser" placeholder="Ник"><input type="number" id="adminGiveAmount" placeholder="Сумма"><button class="btn-success" id="adminGiveBtn">Выдать</button></div>
+            <div class="admin-card"><h3>💵 Выдать USDT</h3><input type="text" id="adminUsdtUser" placeholder="Ник"><input type="number" id="adminUsdtAmount" placeholder="Сумма"><button class="btn-success" id="adminUsdtBtn">Выдать USDT</button></div>
+            <div class="admin-card"><h3>🖼️ Выдать NFT</h3><input type="text" id="adminNftUser" placeholder="Ник"><select id="adminNftType"><option value="cat">Кот 🐱</option><option value="skull">Череп 💀</option><option value="alien">Инопланетянин 👽</option><option value="cyber">Киберпанк 🤖</option><option value="space">Космос 🚀</option></select><button class="btn-success" id="adminNftBtn">Выдать NFT</button></div>
+            <div class="admin-card"><h3>🎫 Галочка</h3><input type="text" id="adminVerifyUser" placeholder="Ник"><button id="adminVerifyBtn">Выдать ✔</button><button class="btn-warning" id="adminUnverifyBtn">Снять ✔</button></div>
+            <div class="admin-card"><h3>🚫 Бан</h3><input type="text" id="adminBanUser" placeholder="Ник"><button class="btn-danger" id="adminBanBtn">Забанить</button><button class="btn-success" id="adminUnbanBtn">Разбанить</button></div>
+        </div>
+    </div>
+
+    <div class="modal" id="registerModal">
+        <div class="modal-content">
+            <div class="modal-header"><span>Регистрация</span><button class="modal-close" data-close="registerModal">✖</button></div>
+            <input type="text" id="regName" placeholder="Ник (3–20 символов)">
+            <input type="tel" id="regPhone" placeholder="Номер телефона">
+            <input type="password" id="regPass" placeholder="Пароль (от 5 до 20 символов)">
+            <button class="auth-btn" id="registerBtn">Создать аккаунт</button>
+        </div>
+    </div>
+
+    <div class="modal" id="changeNumberModal">
+        <div class="modal-content">
+            <div class="modal-header"><span>Замена номера</span><button class="modal-close" data-close="changeNumberModal">✖</button></div>
+            <input type="text" id="newRealNumber" placeholder="Введите ваш реальный номер">
+            <button class="btn-success" style="padding:15px; border-radius:10px; border:none; font-weight:bold;" id="confirmChangeNumberBtn">Сохранить</button>
+        </div>
+    </div>
+
+    <div class="modal" id="searchModal">
+        <div class="modal-content">
+            <div class="modal-header"><span>Поиск</span><button class="modal-close" data-close="searchModal">✖</button></div>
+            <input type="text" class="search-input" id="searchInput" placeholder="Введите ник...">
+            <div id="searchResults"></div>
+        </div>
+    </div>
+
+    <div class="modal" id="createModal">
+        <div class="modal-content">
+            <div class="modal-header"><span>Создать</span><button class="modal-close" data-close="createModal">✖</button></div>
+            <div class="create-btn" onclick="toast('В разработке')">👥 Группа</div>
+            <div class="create-btn" onclick="toast('В разработке')">📢 Канал</div>
+            <div class="create-btn" onclick="toast('В разработке')">🤖 Бот</div>
+        </div>
+    </div>
+
+    <div class="menu-overlay" id="menuOverlay"></div>
+    <div class="side-menu" id="sideMenu">
+        <div class="profile-section" id="openProfileMenu">
+            <div class="profile-avatar-big" id="menuAvatar">U</div>
+            <div class="profile-name"><span id="menuName">User</span><span class="verified-badge" id="menuVerifyBadge">✔</span></div>
+            <div style="font-size:13px;color:#7d8b99;" id="menuRole">Роль: Пользователь</div>
+        </div>
+        <div class="menu-items">
+            <div class="menu-item" id="menuProfileBtn">👤 Мой профиль</div>
+            <div class="menu-item" id="menuShopBtn">💳 Магазин</div>
+            <div class="menu-item" id="menuGiftsBtn">🎁 Мои подарки</div>
+            <div class="menu-item" id="adminMenuItem" style="display:none;color:#4fa8ff;">🛡️ Админ-панель</div>
+            <div class="menu-item" id="logoutBtn" style="color:#e53e3e;margin-top:20px;">🚪 Выйти</div>
+        </div>
+    </div>
+</div>
+
+<script>
+    setTimeout(() => { if (!window.__appReady) { const e = document.getElementById('mainError'); e.textContent = 'Не удалось загрузить Firebase.'; e.style.display = 'block'; } }, 6000);
+</script>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getDatabase, ref, push, set, get, update, onValue, onChildAdded, runTransaction } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+    import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+    const firebaseConfig = { apiKey: "AIzaSyBkNR9ZrRFwB39CYlhk2CNz4jWD-WGWuD8", authDomain: "chat-d7385.firebaseapp.com", databaseURL: "https://chat-d7385-default-rtdb.europe-west1.firebasedatabase.app", projectId: "chat-d7385", storageBucket: "chat-d7385.firebasestorage.app", messagingSenderId: "421202112650", appId: "1:421202112650:web:7b53494f3d32fd02a87d73" };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    const auth = getAuth(app);
+
+    const ADMIN_NICK = "evdo";
+    const ADMIN_SECRET = "evdo evdo EVDONKO Misha hi fish popa pops vino Moldova";
+    const RESERVED = ["bot"];
+    const NAME_RE = /^[a-zа-яё0-9_]{3,20}$/;
+    const DAY = 24 * 60 * 60 * 1000;
+    const GIFTS = [{ icon: "🌹", name: "Роза", price: 10 }, { icon: "🧸", name: "Мишка", price: 50 }, { icon: "💎", name: "Алмаз", price: 100 }, { icon: "👑", name: "Корона", price: 500 }];
+    
+    // ССЫЛКИ НА КАРТИНКИ NFT
+    const NFTS = [
+        { id: "cat", name: "Кот", img: "https://i.pinimg.com/736x/84/4a/26/844a2685b3a12a3b4f1d208a108672a6.jpg", price: 50 },
+        { id: "skull", name: "Череп", img: "https://i.pinimg.com/736x/25/8b/45/258b45dc14c724c141811b80fa78c31f.jpg", price: 100 },
+        { id: "alien", name: "Инопланетянин", img: "https://i.pinimg.com/736x/71/f0/b2/71f0b2c1f12b128b15ab202a03b18a15.jpg", price: 150 },
+        { id: "cyber", name: "Киберпанк", img: "https://i.pinimg.com/736x/75/fe/f9/75fef9dbd83556c32285ab2b519d0f0c.jpg", price: 200 },
+        { id: "space", name: "Космос", img: "https://i.pinimg.com/736x/a3/e4/52/a3e4527a6b43ad639c8335389b342ca4.jpg", price: 300 }
+    ];
+
+    signInAnonymously(auth).catch(console.error);
+
+    const $ = id => document.getElementById(id);
+    const normName = s => String(s || "").trim().toLowerCase();
+    const chatKey = (a, b) => [a, b].sort().join("_"); 
+    const userRef = name => ref(db, "users/" + name);
+    const toArr = v => Array.isArray(v) ? v.filter(x => x != null) : Object.values(v || {});
+    const fmtBal = v => (Number(v) || 0) + " 💰";
+
+    function toast(msg, ok = false) { const t = $("toast"); t.textContent = msg; t.className = ok ? "toast show success" : "toast show"; clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove("show"), 2500); }
+    function showScreen(id) { document.querySelectorAll(".screen").forEach(s => s.classList.remove("active")); $(id).classList.add("active"); if (id === "mainScreen") renderChatList(); if (id === "walletScreen") renderShop(); if (id === "profileScreen") renderProfile(); }
+    const openModal = id => $(id).classList.add("active");
+    const closeModal = id => $(id).classList.remove("active");
+    
+    // ИСПРАВЛЕНИЕ КЛИКОВ МЕНЮ
+    function toggleMenu(show) { 
+        const menu = $("sideMenu");
+        const overlay = $("menuOverlay");
+        if(show) { menu.classList.add("active"); overlay.classList.add("active"); }
+        else { menu.classList.remove("active"); overlay.classList.remove("active"); }
+    }
+
+    let me = null, profile = null, unsubProfile = null, unsubChat = null, activeChat = null, activeProfileTab = 'gifts';
+
+    function authError(msg) { const e = $("mainError"); e.textContent = msg; e.style.display = "block"; }
+
+    $("usernameInput").addEventListener("input", () => { $("adminSecretBox").classList.toggle("active", normName($("usernameInput").value) === ADMIN_NICK); });
+    $("loginBtn").addEventListener("click", () => login(false));
+    $("openRegBtn").addEventListener("click", () => openModal("registerModal"));
+
+    window.addEventListener('load', () => {
+        const savedUser = localStorage.getItem('savedUser');
+        if (savedUser) {
+            try { const u = JSON.parse(savedUser); $("usernameInput").value = u.name; login(true); } catch(e) { localStorage.removeItem('savedUser'); }
+        }
+    });
+
+    async function login(isAuto = false) {
+        $("mainError").style.display = "none";
+        const name = normName($("usernameInput").value);
+        const pass = $("passwordInput").value.trim();
+        if (!name) return authError("Введите ник!");
+
+        let role = "USER";
+        if (name === ADMIN_NICK) {
+            if (!isAuto && $("secretPhrase").value.trim() !== ADMIN_SECRET) return authError("Неверная фраза!");
+            role = "ADMIN";
+        }
+
+        try {
+            const snap = await get(userRef(name));
+            if (!snap.exists()) {
+                if (name === ADMIN_NICK) await set(userRef(name), { balance: 9999, usdt: 1000, nex: 500, verified: true, banned: false, gifts: [], numbers: [], nfts: [], chats: [] });
+                else return authError("Аккаунт не найден.");
+            } else {
+                const data = snap.val();
+                if (data.banned && role !== "ADMIN") return authError("Забанен!");
+                if (!isAuto && data.password && data.password !== pass) return authError("Неверный пароль!");
+            }
+
+            me = { name, role };
+            startSession();
+            showScreen("mainScreen");
+            toast("Успешный вход!", true);
+            localStorage.setItem('savedUser', JSON.stringify({ name: me.name }));
+            $("passwordInput").value = ""; 
+        } catch (e) { authError("Ошибка: " + e.message); }
+    }
+
+    function startSession() {
+        if (unsubProfile) unsubProfile();
+        unsubProfile = onValue(userRef(me.name), snap => {
+            if (!snap.exists()) return;
+            profile = snap.val();
+            if (!profile.nfts) profile.nfts = [];
+            if (!profile.numbers) profile.numbers = [];
+            if (!profile.nex) profile.nex = 0;
+            
+            $("headerBalance").textContent = fmtBal(profile.balance);
+            $("walletBalance").textContent = (profile.nex || 0) + " NEX";
+            $("menuVerifyBadge").classList.toggle("show", !!profile.verified);
+            
+            const avatarUrl = profile.nfts.length > 0 ? NFTS.find(n => n.id === profile.nfts[0])?.img : null;
+            const avHtml = avatarUrl ? `<img src="${avatarUrl}">` : me.name[0].toUpperCase();
+            
+            $("menuAvatar").innerHTML = avHtml;
+            $("menuName").textContent = me.name;
+            $("menuRole").textContent = "Роль: " + me.role;
+
+            if (me.role === "ADMIN") $("menuAvatar").style.background = "#e53e3e";
+            renderChatList();
+            if($("profileScreen").classList.contains('active')) renderProfile();
+        });
+
+        $("adminMenuItem").style.display = me.role === "ADMIN" ? "flex" : "none";
+    }
+
+    $("registerBtn").addEventListener("click", async () => {
+        const name = normName($("regName").value), phone = $("regPhone").value.replace(/\D/g, ""), pass = $("regPass").value.trim();
+        if (!NAME_RE.test(name)) return toast("Ник неверный!");
+        if (RESERVED.includes(name)) return toast("Ник занят!");
+        if (phone.length < 10) return toast("Номер неверный!");
+        if (pass.length < 5 || pass.length > 20) return toast("Пароль 5-20 символов!");
+
+        try {
+            const res = await runTransaction(userRef(name), cur =>
+                cur === null ? { balance: 100, usdt: 0, nex: 0, verified: false, banned: false, gifts: [], numbers: [], nfts: [], chats: [], phone, password: pass } : undefined
+            );
+            if (!res.committed) return toast("Ник занят!");
+            closeModal("registerModal"); $("usernameInput").value = name; $("passwordInput").value = pass; 
+            toast("Аккаунт создан!", true);
+        } catch (e) { toast("Ошибка: " + e.message); }
+    });
+
+    // ---------------- ПРОФИЛЬ ----------------
+    window.switchProfileTab = function(tab, e) {
+        activeProfileTab = tab;
+        document.querySelectorAll('.profile-tab').forEach(t => t.classList.remove('active'));
+        e.target.classList.add('active');
+        renderProfile();
+    }
+
+    function renderProfile() {
+        if(!profile) return;
+        const avatarUrl = profile.nfts.length > 0 ? NFTS.find(n => n.id === profile.nfts[0])?.img : null;
+        $("profileAvatar").innerHTML = avatarUrl ? `<img src="${avatarUrl}">` : me.name[0].toUpperCase();
+        $("profileName").innerHTML = me.name + (profile.verified ? ' <span class="verified-badge show">✔</span>' : '');
+        $("profileBio").textContent = "@" + me.name + " • " + (profile.phone || "Номер скрыт");
+        
+        $("profileBalance").textContent = profile.balance || 0;
+        $("profileUsdt").textContent = profile.usdt || 0;
+        $("profileNex").textContent = profile.nex || 0;
+
+        const content = $("profileContent");
+        content.innerHTML = "";
+
+        if (activeProfileTab === 'gifts') {
+            const gifts = toArr(profile.gifts);
+            if (gifts.length === 0) content.innerHTML = '<div class="empty">Подарков нет</div>';
+            else {
+                const grid = document.createElement('div'); grid.className = 'my-gifts-grid'; grid.style.padding = '0';
+                gifts.forEach(g => {
+                    grid.innerHTML += `<div class="gift-card"><div class="icon cartoon-anim">${g.icon}</div><div style="margin-top:10px;font-size:14px;color:#ecc94b;font-weight:bold;">${g.name}</div></div>`;
+                });
+                content.appendChild(grid);
+            }
+        }
+        
+        if (activeProfileTab === 'nft') {
+            const myNfts = toArr(profile.nfts);
+            if (myNfts.length === 0) content.innerHTML = '<div class="empty">Нет NFT. Купите в магазине!</div>';
+            else {
+                const grid = document.createElement('div'); grid.className = 'nft-grid';
+                myNfts.forEach(nftId => {
+                    const nft = NFTS.find(n => n.id === nftId);
+                    if(nft) {
+                        grid.innerHTML += `<div class="nft-item" onclick="setActiveNft('${nft.id}')"><img src="${nft.img}" class="cartoon-anim"><div style="font-size:10px; margin-top:5px;">${nft.name}</div></div>`;
+                    }
+                });
+                content.appendChild(grid);
+                content.innerHTML += `<p style="font-size:12px; color:#888; margin-top:10px; text-align:center;">Нажмите на NFT, чтобы поставить на аватарку</p>`;
+            }
+        }
+
+        if (activeProfileTab === 'numbers') {
+            const numbers = toArr(profile.numbers);
+            if (numbers.length === 0) content.innerHTML = '<div class="empty">Нет номеров</div>';
+            else {
+                numbers.forEach((num, i) => {
+                    const card = document.createElement("div"); card.className = "number-card";
+                    card.innerHTML = `<div class="number-text">${num}</div><button class="eye-btn" onclick="openModal('changeNumberModal'); window.currentNumIndex = ${i}">Заменить</button>`;
+                    content.appendChild(card);
+                });
+            }
+        }
+    }
+
+    window.setActiveNft = async function(nftId) {
+        let nfts = toArr(profile.nfts);
+        nfts = nfts.filter(id => id !== nftId);
+        nfts.unshift(nftId);
+        await update(userRef(me.name), { nfts });
+        toast("Аватар изменен!", true);
+    }
+
+    $("confirmChangeNumberBtn").addEventListener("click", async () => {
+        const newNum = $("newRealNumber").value.trim();
+        if(newNum.length < 5) return toast("Введите номер!");
+        let numbers = toArr(profile.numbers);
+        numbers[window.currentNumIndex] = newNum;
+        await update(userRef(me.name), { numbers, phone: newNum });
+        closeModal('changeNumberModal');
+        toast("Номер заменен!", true);
+        renderProfile();
+    });
+
+    // ---------------- ЧАТЫ ----------------
+    function chatItem({ name, title, color, letter, verified = false, preview = "", id }) {
+        const d = document.createElement("div"); d.className = "chat-item"; if (id) d.id = id;
+        d.innerHTML = `<div class="avatar" style="background:${color}">${letter}</div><div class="chat-info"><div class="chat-name">${title} <span class="verified-badge ${verified ? 'show' : ''}">✔</span></div><div class="chat-msg">${preview}</div></div>`;
+        d.addEventListener("click", () => openChat(name, "онлайн", color));
+        return d;
+    }
+
+    function renderChatList() {
+        if (!me) return;
+        const list = $("mainChatList"); list.innerHTML = "";
+        list.append(
+            chatItem({ name: ADMIN_NICK, title: "evdo", color: "#e53e3e", letter: "E", verified: true, preview: "Написать разработчику...", id: "preview_evdo" }),
+            chatItem({ name: "bot", title: "Bot Helper", color: "#2b5278", letter: "🤖", preview: "Напишите /bonus" })
+        );
+        list.append(chatItem({ name: me.name, title: "Избранное", color: "#4fa8ff", letter: me.name[0].toUpperCase(), verified: !!profile?.verified, preview: "Ваши сообщения" }));
+
+        const myChats = toArr(profile?.chats);
+        myChats.forEach(c => {
+            if (c.name === me.name || c.name === ADMIN_NICK || c.name === "bot") return;
+            list.append(chatItem({ name: c.name, title: c.name, color: "#38a169", letter: c.name[0].toUpperCase(), preview: "Нажмите, чтобы открыть" }));
+        });
+        loadChatPreview();
+    }
+
+    async function loadChatPreview() {
+        try {
+            const snap = await get(ref(db, "chats/" + chatKey(me.name, ADMIN_NICK)));
+            if (!snap.exists()) return;
+            const msgs = Object.values(snap.val()); const last = msgs[msgs.length - 1];
+            const el = $("preview_evdo");
+            if (el && last) el.querySelector(".chat-msg").textContent = (last.from === me.name ? "Вы: " : "") + last.text;
+        } catch (e) {}
+    }
+
+    // ---------------- МАГАЗИН ----------------
+    async function charge(delta, mutate, currency = 'balance') {
+        const res = await runTransaction(userRef(me.name), u => {
+            if (!u) return u;
+            const bal = Number(u[currency]) || 0;
+            if (bal + delta < 0) return; 
+            u[currency] = bal + delta;
+            if (mutate) mutate(u);
+            return u;
+        });
+        return res.committed;
+    }
+
+    async function renderShop() {
+        const grid = $("numbersAuctionGrid"), giftGrid = $("giftShopGrid"), nftGrid = $("nftShopGrid");
+        grid.innerHTML = ""; giftGrid.innerHTML = ""; nftGrid.innerHTML = "";
+
+        GIFTS.forEach(g => {
+            const el = document.createElement("div"); el.className = "shop-item";
+            el.innerHTML = `<div class="icon cartoon-anim">${g.icon}</div><div class="price">${g.price} 💰</div>`;
+            el.addEventListener("click", () => buyGift(g)); giftGrid.appendChild(el);
+        });
+
+        NFTS.forEach(n => {
+            const el = document.createElement("div"); el.className = "shop-item";
+            el.innerHTML = `<img src="${n.img}" style="width:50px; height:50px; border-radius:50%; object-fit:cover;" class="cartoon-anim"><div class="price">${n.price} 💰</div>`;
+            el.addEventListener("click", () => buyNft(n)); nftGrid.appendChild(el);
+        });
+
+        try {
+            const [aSnap, uSnap] = await Promise.all([get(ref(db, "auction")), get(userRef(me.name))]);
+            const auction = aSnap.exists() ? Object.entries(aSnap.val()) : [];
+            const myNumbers = toArr(uSnap.val()?.numbers);
+            if (auction.length === 0) grid.innerHTML = '<div class="empty">Номеров нет.</div>';
+            else auction.forEach(([key, item]) => {
+                if(myNumbers.includes(item.number)) return;
+                const el = document.createElement("div"); el.className = "shop-item";
+                el.innerHTML = `<div class="icon">📱</div><div class="price">${item.price} 💰</div>`;
+                el.addEventListener("click", () => buyNumber(key, item)); grid.appendChild(el);
+            });
+        } catch (e) {}
+    }
+
+    async function buyNumber(key, item) {
+        const price = Number(item.price);
+        const claimed = await runTransaction(ref(db, "auction/" + key), cur => cur === null ? undefined : null);
+        if (!claimed.committed) return toast("Номер уже продан!");
+        const paid = await charge(-price, u => { u.numbers = [...toArr(u.numbers), item.number]; });
+        if (!paid) { await set(ref(db, "auction/" + key), item); return toast("Недостаточно средств!"); }
+        toast("Куплен номер: " + item.number, true); renderShop();
+    }
+
+    async function buyGift(g) {
+        const paid = await charge(-g.price, u => { u.gifts = [...toArr(u.gifts), { name: g.name, icon: g.icon, price: g.price }]; });
+        if (!paid) return toast("Недостаточно средств!");
+        toast("Куплено: " + g.name + "!", true);
+    }
+
+    async function buyNft(n) {
+        if (toArr(profile.nfts).includes(n.id)) return toast("У вас уже есть этот NFT!");
+        const paid = await charge(-n.price, u => { u.nfts = [...toArr(u.nfts), n.id]; });
+        if (!paid) return toast("Недостаточно средств!");
+        toast("Куплен NFT: " + n.name, true);
+    }
+
+    async function openMyGifts() {
+        showScreen("myGiftsScreen"); const grid = $("myGiftsGrid"); grid.innerHTML = "";
+        try {
+            const snap = await get(userRef(me.name)); const gifts = toArr(snap.val()?.gifts);
+            if (gifts.length === 0) return grid.innerHTML = '<div class="empty" style="margin-top:50px;">Подарков нет</div>';
+            gifts.forEach((gift, index) => {
+                const card = document.createElement("div"); card.className = "gift-card";
+                card.innerHTML = `<div class="icon cartoon-anim">${gift.icon}</div><div style="margin-top:10px;font-size:14px;color:#ecc94b;font-weight:bold;">${gift.name}</div>`;
+                grid.appendChild(card);
+            });
+        } catch (e) {}
+    }
+
+    // ---------------- АДМИНКА ----------------
+    async function editUser(name, mutate) {
+        const snap = await get(userRef(name));
+        if (!snap.exists()) { toast("Пользователь не найден!"); return false; }
+        const res = await runTransaction(userRef(name), u => { if (!u) return u; mutate(u); return u; });
+        return res.committed;
+    }
+    function requireAdmin() { if (me?.role !== "ADMIN") { toast("Нет доступа"); return false; } return true; }
+    async function adminRun(fn) { if (!requireAdmin()) return; try { await fn(); } catch (e) { toast("Ошибка: " + e.message); } }
+
+    $("adminNexBtn").addEventListener("click", () => adminRun(async () => {
+        const target = normName($("adminNexUser").value), amount = parseInt($("adminNexAmount").value, 10);
+        if (!target || !amount) return toast("Введите ник и сумму!");
+        if (await editUser(target, u => { u.nex = (Number(u.nex) || 0) + amount; })) toast(`Выдано ${amount} NEX`, true);
+    }));
+
+    $("adminAddNumberBtn").addEventListener("click", () => adminRun(async () => {
+        const num = $("adminNewNumber").value.trim(), price = parseInt($("adminNewNumberPrice").value, 10);
+        if (!num || !(price > 0)) return toast("Введите номер и цену!");
+        await push(ref(db, "auction"), { number: num, price });
+        $("adminNewNumber").value = ""; $("adminNewNumberPrice").value = ""; toast("Номер добавлен!", true);
+    }));
+
+    $("adminGiveBtn").addEventListener("click", () => adminRun(async () => {
+        const target = normName($("adminGiveUser").value), amount = parseInt($("adminGiveAmount").value, 10);
+        if (!target || !amount) return toast("Введите ник и сумму!");
+        if (await editUser(target, u => { u.balance = (Number(u.balance) || 0) + amount; })) toast(`Выдано ${amount} 💰`, true);
+    }));
+
+    $("adminUsdtBtn").addEventListener("click", () => adminRun(async () => {
+        const target = normName($("adminUsdtUser").value), amount = parseInt($("adminUsdtAmount").value, 10);
+        if (!target || !amount) return toast("Введите ник и сумму!");
+        if (await editUser(target, u => { u.usdt = (Number(u.usdt) || 0) + amount; })) toast(`Выдано ${amount} USDT`, true);
+    }));
+
+    $("adminNftBtn").addEventListener("click", () => adminRun(async () => {
+        const target = normName($("adminNftUser").value), nftId = $("adminNftType").value;
+        if (!target) return toast("Введите ник!");
+        if (await editUser(target, u => { u.nfts = [...toArr(u.nfts), nftId]; })) { $("adminNftUser").value = ""; toast("NFT выдан!", true); }
+    }));
+
+    const setVerified = val => adminRun(async () => {
+        const target = normName($("adminVerifyUser").value);
+        if (!target) return toast("Введите ник!");
+        if (await editUser(target, u => { u.verified = val; })) toast(`Галочка ${val ? "выдана" : "снята"}!`, true);
+    });
+    $("adminVerifyBtn").addEventListener("click", () => setVerified(true));
+    $("adminUnverifyBtn").addEventListener("click", () => setVerified(false));
+
+    const setBanned = val => adminRun(async () => {
+        const target = normName($("adminBanUser").value);
+        if (!target) return toast("Введите ник!");
+        if (target === ADMIN_NICK) return toast("Нельзя забанить админа");
+        if (await editUser(target, u => { u.banned = val; })) toast(`Пользователь ${val ? "забанен" : "разбанен"}!`, true);
+    });
+    $("adminBanBtn").addEventListener("click", () => setBanned(true));
+    $("adminUnbanBtn").addEventListener("click", () => setBanned(false));
+
+    // ---------------- ПОИСК И ЧАТЫ ----------------
+    $("searchInput").addEventListener("input", doSearch);
+    async function doSearch() {
+        const q = normName($("searchInput").value); const box = $("searchResults"); box.innerHTML = "";
+        if (!q) return;
+        try {
+            const snap = await get(ref(db, "users"));
+            const users = snap.exists() ? snap.val() : {};
+            const names = Object.keys(users).filter(n => n.includes(q));
+            if (names.length === 0) return box.innerHTML = '<div class="empty" style="margin-top:20px;">Не найдено</div>';
+            names.forEach(n => {
+                const row = document.createElement("div"); row.className = "search-result";
+                row.innerHTML = `<div style="display:flex;align-items:center;gap:10px;"><div class="avatar" style="width:40px;height:40px;margin:0;background:#2b5278;font-size:16px;">${n[0].toUpperCase()}</div><span>${n}</span></div><button class="action-btn">Написать</button>`;
+                row.querySelector("button").addEventListener("click", () => { closeModal("searchModal"); openChat(n, "Пользователь", "#2b5278"); });
+                box.appendChild(row);
+            });
+        } catch (e) { box.innerHTML = '<div class="empty" style="color:#e53e3e;">Ошибка базы</div>'; }
+    }
+
+    async function openChat(target, status, color) {
+        if (!me) return;
+        activeChat = target; showScreen("chatScreen");
+        $("chatName").textContent = target; $("chatStatus").textContent = status;
+        const av = $("chatAvatar"); av.textContent = target[0].toUpperCase(); av.style.background = color;
+        const box = $("chatMessages"); box.innerHTML = "";
+
+        if (target !== me.name && target !== ADMIN_NICK && target !== "bot") {
+            const myRef = userRef(me.name);
+            const snap = await get(myRef);
+            if (snap.exists()) {
+                const chats = toArr(snap.val().chats);
+                if (!chats.find(c => c.name === target)) {
+                    chats.push({ name: target });
+                    await update(myRef, { chats });
+                }
+            }
+        }
+
+        if (unsubChat) unsubChat();
+        unsubChat = onChildAdded(ref(db, "chats/" + chatKey(me.name, target)), snap => {
+            const m = snap.val(); if (!m) return;
+            const div = document.createElement("div");
+            div.className = "message" + (m.from === me.name ? " out" : "");
+            div.textContent = m.text;
+            box.appendChild(div); box.scrollTop = box.scrollHeight;
+        });
+    }
+
+    $("chatBackBtn").addEventListener("click", () => { if (unsubChat) { unsubChat(); unsubChat = null; } activeChat = null; showScreen("mainScreen"); });
+    $("sendBtn").addEventListener("click", sendMessage);
+    $("msgInput").addEventListener("keydown", e => { if (e.key === "Enter") sendMessage(); });
+
+    async function sendMessage() {
+        const input = $("msgInput"); const text = input.value.trim();
+        if (!text || !activeChat || !me) return;
+        if (profile?.banned && me.role !== "ADMIN") return toast("Вы забанены!");
+        input.value = "";
+
+        if (text === "/bonus") {
+            const res = await runTransaction(userRef(me.name), u => {
+                if (!u) return u;
+                if (Date.now() - (u.lastBonus || 0) < DAY) return;
+                u.balance = (Number(u.balance) || 0) + 50; u.lastBonus = Date.now(); return u;
+            });
+            if (res.committed) toast("+50 💰", true); else toast("Бонус уже получен");
+            return;
+        }
+
+        try {
+            await push(ref(db, "chats/" + chatKey(me.name, activeChat)), { from: me.name, text, time: Date.now() });
+        } catch (e) { toast("Ошибка отправки"); }
+    }
+
+    // ---------------- НАВИГАЦИЯ ----------------
+    $("menuBtn").addEventListener("click", (e) => { e.preventDefault(); toggleMenu(true); });
+    $("menuOverlay").addEventListener("click", () => toggleMenu(false));
+    $("openSearchBtn").addEventListener("click", () => openModal("searchModal"));
+    $("openCreateBtn").addEventListener("click", () => openModal("createModal"));
+    $("walletBarBtn").addEventListener("click", () => showScreen("walletScreen"));
+    $("menuShopBtn").addEventListener("click", () => { toggleMenu(false); showScreen("walletScreen"); });
+    $("menuGiftsBtn").addEventListener("click", () => { toggleMenu(false); openMyGifts(); });
+    $("adminMenuItem").addEventListener("click", () => { toggleMenu(false); showScreen("adminScreen"); });
+    
+    $("menuProfileBtn").addEventListener("click", () => { toggleMenu(false); showScreen("profileScreen"); });
+    $("openProfileMenu").addEventListener("click", () => { toggleMenu(false); showScreen("profileScreen"); });
+    $("closeProfileBtn").addEventListener("click", () => { showScreen("mainScreen"); });
+
+    $("logoutBtn").addEventListener("click", () => { localStorage.removeItem('savedUser'); location.reload(); });
+
+    document.querySelectorAll("[data-back]").forEach(el => el.addEventListener("click", () => showScreen(el.dataset.back)));
+    document.querySelectorAll("[data-close]").forEach(el => el.addEventListener("click", () => closeModal(el.dataset.close)));
+
+    window.__appReady = true;
+</script>
+</body>
+</html>
